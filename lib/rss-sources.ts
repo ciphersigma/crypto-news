@@ -1,4 +1,8 @@
-import type { RSSSource } from './types';
+export interface RSSSource {
+  name: string;
+  url: string;
+  category: string;
+}
 
 export const RSS_SOURCES: RSSSource[] = [
   {

@@ -1,21 +1,3 @@
-// Custom types for RSS parser since @types/rss-parser doesn't exist
-export interface RSSItem {
-  title?: string;
-  link?: string;
-  description?: string;
-  content?: string;
-  pubDate?: string;
-  guid?: string;
-  author?: string;
-}
-
-export interface RSSFeed {
-  title?: string;
-  description?: string;
-  link?: string;
-  items: RSSItem[];
-}
-
 export interface Article {
   id: number;
   title: string;
@@ -32,4 +14,21 @@ export interface RSSSource {
   name: string;
   url: string;
   category: string;
+}
+
+export interface RSSItem {
+  title?: string;
+  link?: string;
+  description?: string;
+  content?: string;
+  pubDate?: string;
+  guid?: string;
+  author?: string;
+}
+
+export interface RSSFeed {
+  title?: string;
+  description?: string;
+  link?: string;
+  items: RSSItem[];
 }

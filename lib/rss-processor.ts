@@ -2,22 +2,32 @@ import Parser from 'rss-parser';
 import { saveArticle } from './database';
 import { RSS_SOURCES } from './rss-sources';
 import crypto from 'crypto';
-import type { RSSItem, RSSFeed } from './types';
 
-// Create parser with custom fields
+interface RSSItem {
+  title?: string;
+  link?: string;
+  description?: string;
+  content?: string;
+  pubDate?: string;
+  guid?: string;
+  author?: string;
+}
+
 const parser = new Parser({
   customFields: {
     item: ['description', 'content', 'pubDate']
   }
-}) as Parser<RSSFeed, RSSItem>;
+});
 
 export async function fetchAllRSSFeeds() {
-  console.log('🔄 Starting RSS fetch...');
+  console.log('🔄 Starting RSS fetch from', RSS_SOURCES.length, 'sources...');
   let totalNewArticles = 0;
+  const errors: string[] = [];
 
   for (const source of RSS_SOURCES) {
     try {
       console.log(`📡 Fetching from ${source.name}...`);
+      
       const feed = await parser.parseURL(source.url);
       
       if (!feed.items || feed.items.length === 0) {
@@ -25,7 +35,9 @@ export async function fetchAllRSSFeeds() {
         continue;
       }
 
-      for (const item of feed.items.slice(0, 10)) { // Latest 10 articles
+      console.log(`📰 Found ${feed.items.length} items in ${source.name} feed`);
+
+      for (const item of feed.items.slice(0, 10)) { // Latest 10 articles per source
         if (!item.link || !item.title) {
           console.log('⚠️ Skipping item without title or link');
           continue;
@@ -44,16 +56,28 @@ export async function fetchAllRSSFeeds() {
         const saved = await saveArticle(articleData);
         if (saved) {
           totalNewArticles++;
-          console.log(`✅ Saved: ${articleData.title.slice(0, 50)}...`);
+          console.log(`✅ Saved: ${articleData.title.substring(0, 50)}...`);
+        } else {
+          console.log(`⚠️ Skipped (duplicate): ${articleData.title.substring(0, 50)}...`);
         }
       }
     } catch (error) {
-      console.error(`❌ Error fetching ${source.name}:`, error);
+      const errorMsg = `Failed to fetch ${source.name}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      console.error(`❌ ${errorMsg}`);
+      errors.push(errorMsg);
     }
   }
 
   console.log(`🎉 RSS fetch complete! Added ${totalNewArticles} new articles`);
-  return totalNewArticles;
+  if (errors.length > 0) {
+    console.log(`⚠️ Errors encountered: ${errors.length}`);
+  }
+  
+  return {
+    newArticles: totalNewArticles,
+    errors: errors,
+    sources: RSS_SOURCES.length
+  };
 }
 
 function cleanTitle(title: string): string {
@@ -69,7 +93,7 @@ function cleanTitle(title: string): string {
 }
 
 function cleanSummary(summary: string): string {
-  if (!summary) return 'Click to read the full article...';
+  if (!summary) return 'Click to read the full article for more details...';
   
   return summary
     .replace(/<[^>]*>/g, '')
