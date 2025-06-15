@@ -22,19 +22,20 @@ const BlockchainHero = dynamic(() => import('../../components/BlockchainHero'), 
 interface Article {
   id: number;
   title: string;
-  summary: string;
+  summary: string | null;
   url: string;
   source: string;
   published_at: string;
   category: string;
+  created_at: string;
 }
 
 export default function Home() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Fetch articles on component mount
   useEffect(() => {
     fetchArticles();
     
@@ -46,24 +47,58 @@ export default function Home() {
   const fetchArticles = async () => {
     try {
       setLoading(true);
+      setError(null);
       
-      // Try to fetch from RSS first
+      // Try to fetch fresh RSS data first
       try {
-        await fetch('/api/fetch-rss', { method: 'POST' });
-      } catch (error) {
-        console.log('RSS fetch failed, using existing data');
+        console.log('🔄 Fetching fresh RSS data...');
+        const rssResponse = await fetch('/api/fetch-rss', { 
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (rssResponse.ok) {
+          const rssData = await rssResponse.json();
+          console.log('✅ RSS fetch result:', rssData);
+        }
+      } catch (rssError) {
+        console.log('⚠️ RSS fetch failed, using existing data:', rssError);
       }
       
       // Get articles from database
-      const response = await fetch('/api/articles');
-      const data = await response.json();
+      console.log('📰 Fetching articles from database...');
+      const response = await fetch('/api/articles', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
       
-      if (data.success && data.articles) {
-        setArticles(data.articles);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-      setLastFetch(new Date());
-    } catch (error) {
-      console.error('Error fetching articles:', error);
+      
+      const data = await response.json();
+      console.log('📊 Articles API response:', data);
+      
+      if (data.success && Array.isArray(data.articles)) {
+        setArticles(data.articles);
+        setLastFetch(new Date());
+        console.log(`✅ Loaded ${data.articles.length} articles`);
+      } else {
+        throw new Error('Invalid response format from articles API');
+      }
+      
+    } catch (fetchError) {
+      console.error('❌ Error fetching articles:', fetchError);
+      setError(fetchError instanceof Error ? fetchError.message : 'Failed to fetch articles');
+      
+      // If no articles loaded yet, show empty state
+      if (articles.length === 0) {
+        setArticles([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -73,58 +108,149 @@ export default function Home() {
     await fetchArticles();
   };
 
+  const handleFetchRSS = async () => {
+    try {
+      setLoading(true);
+      console.log('🔄 Manual RSS fetch triggered...');
+      
+      const response = await fetch('/api/fetch-rss', { 
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      const data = await response.json();
+      console.log('📡 RSS fetch result:', data);
+      
+      if (data.success) {
+        // After RSS fetch, refresh articles
+        await fetchArticles();
+      } else {
+        setError('RSS fetch failed: ' + data.error);
+      }
+    } catch (rssError) {
+      console.error('❌ RSS fetch error:', rssError);
+      setError('Failed to fetch RSS feeds');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <>
-      {/* Your awesome 3D Hero */}
       <BlockchainHero />
       
       {/* Articles Section */}
       <section className="page-section dark">
         <div className="section-container">
-          <div className="flex justify-between items-center mb-12">
-            <h2 className="section-title">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-12 gap-4">
+            <h2 className="section-title mb-0">
               Latest <span className="section-title-accent">Crypto News</span>
             </h2>
             
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
               {lastFetch && (
                 <span className="update-time">
-                  Updated: {lastFetch.toLocaleTimeString()}
+                  Last updated: {lastFetch.toLocaleTimeString()}
                 </span>
               )}
-              <button
-                onClick={handleRefresh}
-                disabled={loading}
-                className={`refresh-btn ${loading ? 'btn-disabled' : ''}`}
-              >
-                <span>{loading ? '🔄' : '🔄'}</span>
-                Refresh
-              </button>
+              
+              <div className="flex gap-2">
+                <button
+                  onClick={handleRefresh}
+                  disabled={loading}
+                  className={`refresh-btn ${loading ? 'btn-disabled' : ''}`}
+                  title="Refresh articles from database"
+                >
+                  <span>{loading ? '🔄' : '🔄'}</span>
+                  Refresh
+                </button>
+                
+                <button
+                  onClick={handleFetchRSS}
+                  disabled={loading}
+                  className={`refresh-btn ${loading ? 'btn-disabled' : ''}`}
+                  title="Fetch latest news from RSS feeds"
+                >
+                  <span>📡</span>
+                  Fetch RSS
+                </button>
+              </div>
             </div>
           </div>
           
-          {loading && articles.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="loading-text">📡 Fetching latest news...</div>
-              <div className="loading-spinner"></div>
-            </div>
-          ) : (
-            <div className="articles-grid">
-              {articles.map((article) => (
-                <ArticleCard key={article.id} article={article} />
-              ))}
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4 mb-8">
+              <div className="text-red-400 font-medium">⚠️ Error</div>
+              <div className="text-red-300 text-sm mt-1">{error}</div>
+              <button 
+                onClick={() => setError(null)}
+                className="text-red-400 hover:text-red-300 text-sm mt-2 underline"
+              >
+                Dismiss
+              </button>
             </div>
           )}
           
-          {articles.length === 0 && !loading && (
+          {/* Loading State */}
+          {loading && articles.length === 0 ? (
             <div className="text-center py-12">
-              <p className="loading-text">No articles found</p>
-              <button
-                onClick={handleRefresh}
-                className="refresh-btn mt-4"
-              >
-                Fetch News
-              </button>
+              <div className="loading-text">📡 Fetching latest crypto news...</div>
+              <div className="loading-spinner mx-auto mt-4"></div>
+              <p className="text-gray-400 text-sm mt-4">
+                This may take a moment while we gather the latest articles
+              </p>
+            </div>
+          ) : articles.length > 0 ? (
+            <>
+              {/* Articles Grid */}
+              <div className="articles-grid">
+                {articles.map((article) => (
+                  <ArticleCard key={article.id} article={article} />
+                ))}
+              </div>
+              
+              {/* Load More Button */}
+              {articles.length >= 12 && (
+                <div className="text-center mt-12">
+                  <button 
+                    onClick={handleRefresh}
+                    className="refresh-btn"
+                    disabled={loading}
+                  >
+                    Load More Articles
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            /* Empty State */
+            <div className="text-center py-16">
+              <div className="text-6xl mb-4">📰</div>
+              <h3 className="text-2xl font-bold text-white mb-4">No Articles Found</h3>
+              <p className="text-gray-400 mb-8 max-w-md mx-auto">
+                It looks like we don&apos;t have any articles yet. Try fetching the latest news from RSS feeds.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <button
+                  onClick={handleFetchRSS}
+                  className="refresh-btn"
+                  disabled={loading}
+                >
+                  <span>📡</span>
+                  Fetch RSS Feeds
+                </button>
+                <button
+                  onClick={handleRefresh}
+                  className="refresh-btn"
+                  disabled={loading}
+                >
+                  <span>🔄</span>
+                  Check Database
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -142,7 +268,7 @@ export default function Home() {
             </div>
             <div className="hero-stat-card">
               <div className="hero-stat-number cyan">
-                {new Set(articles.map(a => a.source)).size}
+                {new Set(articles.map(a => a.source)).size || 0}
               </div>
               <div className="hero-stat-label">News Sources</div>
             </div>
@@ -156,7 +282,7 @@ export default function Home() {
             </div>
             <div className="hero-stat-card">
               <div className="hero-stat-number green">AI</div>
-              <div className="hero-stat-label">Summaries</div>
+              <div className="hero-stat-label">Powered</div>
             </div>
           </div>
         </div>
@@ -172,10 +298,10 @@ export default function Home() {
             Real-time cryptocurrency news aggregation with AI-powered insights
           </p>
           <div className="footer-links">
-            <a href="#">Privacy</a>
-            <a href="#">Terms</a>
-            <a href="#">Contact</a>
-            <a href="#">API</a>
+            <a href="#" onClick={(e) => e.preventDefault()}>Privacy</a>
+            <a href="#" onClick={(e) => e.preventDefault()}>Terms</a>
+            <a href="#" onClick={(e) => e.preventDefault()}>Contact</a>
+            <a href="#" onClick={(e) => e.preventDefault()}>API</a>
           </div>
         </div>
       </footer>
@@ -191,20 +317,27 @@ function ArticleCard({ article }: { article: Article }) {
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
     
     if (diffMins < 1) return 'Just now';
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
     return date.toLocaleDateString();
   };
 
   const getCategoryClass = (category: string) => {
     const categoryLower = category.toLowerCase();
-    if (categoryLower.includes('bitcoin')) return 'bitcoin';
-    if (categoryLower.includes('ethereum')) return 'ethereum';
-    if (categoryLower.includes('defi')) return 'defi';
-    if (categoryLower.includes('nft')) return 'nft';
+    if (categoryLower.includes('bitcoin') || categoryLower.includes('btc')) return 'bitcoin';
+    if (categoryLower.includes('ethereum') || categoryLower.includes('eth')) return 'ethereum';
+    if (categoryLower.includes('defi') || categoryLower.includes('decentralized')) return 'defi';
+    if (categoryLower.includes('nft') || categoryLower.includes('collectible')) return 'nft';
     return 'general';
+  };
+
+  const truncateTitle = (title: string, maxLength: number = 80) => {
+    if (title.length <= maxLength) return title;
+    return title.substring(0, maxLength).trim() + '...';
   };
 
   return (
@@ -223,14 +356,15 @@ function ArticleCard({ article }: { article: Article }) {
           href={article.url} 
           target="_blank" 
           rel="noopener noreferrer"
+          title={article.title}
         >
-          {article.title}
+          {truncateTitle(article.title)}
         </a>
       </h3>
       
       {/* Summary */}
       <p className="article-summary line-clamp-3">
-        {article.summary || 'Click to read the full article...'}
+        {article.summary || 'Click to read the full article for more details...'}
       </p>
       
       {/* Footer */}
