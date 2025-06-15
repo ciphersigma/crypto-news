@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { fetchAllRSSFeeds } from '../../../../lib/rss-processor';
+//import { fetchAllRSSFeeds } from '../../../../lib/rss-processor';
 
 export async function POST() {
   try {
     console.log('📡 API: RSS fetch requested...');
     
     // TODO: Implement RSS fetching
-  const newArticles = await fetchAllRSSFeeds();
+  //const newArticles = await fetchAllRSSFeeds();
     
     // For now, return a placeholder response
     console.log('⚠️ API: RSS fetching not implemented yet');
